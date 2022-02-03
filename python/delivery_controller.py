@@ -59,6 +59,11 @@ class ScheduleItem:
 
         maps.update_average_speed(prev.location, delivery.location, elapsed)
 
+    def eta(self, maps):
+        if not self.next:
+            return
+
+        return maps.calculate_eta(self.delivery.location, self.prev.delivery.location)
 
 def build_schedule(deliveries: List[Delivery]) -> ScheduleItem:
     """
@@ -113,14 +118,11 @@ class DeliveryController:
 
     def update_delivery(self, delivery_event: DeliveryEvent):
         scheduled = self.delivery_schedule.find(delivery_event.id)
-        delivery = scheduled.delivery
-        delivery.arrive(delivery_event.time_of_delivery)
-        self.notifier.request_feedback(delivery)
+        scheduled.delivery.arrive(delivery_event.time_of_delivery)
+
+        self.notifier.request_feedback(scheduled.delivery)
+
         scheduled.record_speed(self.map_service)
 
         if scheduled.next:
-            next_delivery = scheduled.next.delivery
-            next_eta = self.map_service.calculate_eta(
-                delivery_event.location, next_delivery.location
-            )
-            self.notifier.send_eta_update(next_delivery, next_eta)
+            self.notifier.send_eta_update(scheduled.next.delivery, scheduled.eta(self.map_service))
