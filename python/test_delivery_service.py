@@ -1,7 +1,12 @@
 import pytest
 import datetime
 
-from delivery_controller import DeliveryController, Delivery, DeliveryEvent, SmtpNotifier
+from delivery_controller import (
+    DeliveryController,
+    Delivery,
+    DeliveryEvent,
+    SmtpNotifier,
+)
 from map_service import MapService, Location
 
 location1 = Location(52.2296756, 21.0122287)
@@ -79,7 +84,6 @@ def test_a_single_delivery_is_delivered():
     )
 
 
-
 def test_when_a_delivery_affects_the_schedule():
     """
     In this scenario, we have three deliveries to three locations.
@@ -111,7 +115,10 @@ def test_when_a_delivery_affects_the_schedule():
     assert end == location2
     assert time == (one_hour * 2)
 
-    [_,(address, subject, message)] = gateway.sent
+    [_, (address, subject, message)] = gateway.sent
 
     assert subject == "Your delivery will arrive soon"
-    assert message == f"Your delivery to {location3} is next, estimated time of arrival is in 325 minutes. Be ready!"
+    assert (
+        message
+        == f"Your delivery to {location3} is next, estimated time of arrival is in 325 minutes. Be ready!"
+    )
