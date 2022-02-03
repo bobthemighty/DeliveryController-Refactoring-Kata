@@ -25,11 +25,14 @@ class Delivery:
 
 class DeliveryController:
     def __init__(
-        self, delivery_schedule: List[Delivery], gateway: Optional[EmailGateway]
+        self,
+        delivery_schedule: List[Delivery],
+        gateway: Optional[EmailGateway],
+        maps: Optional[MapService] = None,
     ):
         self.delivery_schedule = delivery_schedule
         self.email_gateway = gateway or EmailGateway()
-        self.map_service = MapService()
+        self.map_service = maps or MapService()
 
     def update_delivery(self, delivery_event: DeliveryEvent):
         next_delivery = None

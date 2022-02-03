@@ -6,6 +6,7 @@ from map_service import MapService, Location
 
 location1 = Location(52.2296756, 21.0122287)
 location2 = Location(52.406374, 16.9251681)
+location3 = Location(51.406374, 17.9251681)
 
 
 def test_map_service():
@@ -16,8 +17,41 @@ def test_map_service():
 
 
 class FakeEmailGateway:
+    def __init__(self):
+        self.sent = []
+
     def send(self, address, subject, message):
-        pass
+        self.sent.append((address, subject, message))
+
+
+class FakeMapService:
+    def __init__(self, value):
+        self.value = value
+        self.updates = []
+
+    def calculate_eta(self, location1, location2):
+        return self.value
+
+    def update_average_speed(self, location1, location2, time):
+        self.updates.append((location1, location2, time))
+
+
+def a_delivery(
+    id,
+    contact_email="fred@codefiend.co.uk",
+    location=location1,
+    time=None,
+    arrived=False,
+    on_time=False,
+):
+    return Delivery(
+        id=id,
+        contact_email="fred@codefiend.co.uk",
+        location=location,
+        time_of_delivery=time or datetime.datetime.now,
+        arrived=False,
+        on_time=False,
+    )
 
 
 def test_a_single_delivery_is_delivered():
@@ -41,3 +75,38 @@ def test_a_single_delivery_is_delivered():
 
     assert delivery.arrived is True
     assert delivery.on_time is True
+
+    assert len(gateway.sent) == 1
+
+    [(address, subject, message)] = gateway.sent
+    assert address == "fred@codefiend.co.uk"
+    assert subject == f"Your feedback is important to us"
+    assert (
+        message
+        == f'Regarding your delivery today at {now}. How likely would you be to recommend this delivery service to a friend? Click <a href="url">here</a>'
+    )
+
+
+now = datetime.datetime.now()
+one_hour = datetime.timedelta(hours=1)
+
+
+def test_when_a_delivery_affects_the_schedule():
+
+    deliveries = [
+        a_delivery(1, time=now, location=location1),
+        a_delivery(2, time=now + one_hour, location=location2),
+        a_delivery(3, time=now + (one_hour * 2), location=location3),
+    ]
+
+    gateway = FakeEmailGateway()
+    maps = FakeMapService(10)
+    controller = DeliveryController(deliveries, gateway, maps)
+
+    controller.update_delivery(DeliveryEvent(2, now + (one_hour * 2), location2))
+
+    [(start, end, time)] = maps.updates
+
+    assert start == location1
+    assert end == location2
+    assert time == (one_hour * 2)
