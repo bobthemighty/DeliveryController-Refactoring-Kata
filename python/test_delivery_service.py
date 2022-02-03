@@ -1,12 +1,15 @@
 import pytest
 import datetime
 
-from delivery_controller import DeliveryController, Delivery, DeliveryEvent
+from delivery_controller import DeliveryController, Delivery, DeliveryEvent, SmtpNotifier
 from map_service import MapService, Location
 
 location1 = Location(52.2296756, 21.0122287)
 location2 = Location(52.406374, 16.9251681)
 location3 = Location(51.406374, 17.9251681)
+
+now = datetime.datetime.now()
+one_hour = datetime.timedelta(hours=1)
 
 
 def test_map_service():
@@ -48,7 +51,7 @@ def a_delivery(
         id=id,
         contact_email="fred@codefiend.co.uk",
         location=location,
-        time_of_delivery=time or datetime.datetime.now,
+        time_of_delivery=time or now,
         arrived=False,
         on_time=False,
     )
@@ -56,22 +59,11 @@ def a_delivery(
 
 def test_a_single_delivery_is_delivered():
 
-    now = datetime.datetime.now()
-
-    delivery = Delivery(
-        id=1,
-        contact_email="fred@codefiend.co.uk",
-        location=location1,
-        time_of_delivery=now,
-        arrived=False,
-        on_time=True,
-    )
-
-    update = DeliveryEvent(1, now, location2)
+    delivery = a_delivery(1)
     gateway = FakeEmailGateway()
-    controller = DeliveryController([delivery], gateway)
+    controller = DeliveryController([delivery], SmtpNotifier(gateway))
 
-    controller.update_delivery(update)
+    controller.update_delivery(DeliveryEvent(1, now, location2))
 
     assert delivery.arrived is True
     assert delivery.on_time is True
@@ -87,11 +79,19 @@ def test_a_single_delivery_is_delivered():
     )
 
 
-now = datetime.datetime.now()
-one_hour = datetime.timedelta(hours=1)
-
 
 def test_when_a_delivery_affects_the_schedule():
+    """
+    In this scenario, we have three deliveries to three locations.
+    The first is scheduled to happen now, the second in an hour, the third in
+    two hours.
+
+    When the second delivery is delivered an hour late, we should call the map
+    service to recalculate our average speed.
+
+    We should send an email to the recipient of delivery 3 with the updated
+    ETA.
+    """
 
     deliveries = [
         a_delivery(1, time=now, location=location1),
@@ -100,8 +100,8 @@ def test_when_a_delivery_affects_the_schedule():
     ]
 
     gateway = FakeEmailGateway()
-    maps = FakeMapService(10)
-    controller = DeliveryController(deliveries, gateway, maps)
+    maps = FakeMapService(325)
+    controller = DeliveryController(deliveries, SmtpNotifier(gateway), maps)
 
     controller.update_delivery(DeliveryEvent(2, now + (one_hour * 2), location2))
 
@@ -110,3 +110,8 @@ def test_when_a_delivery_affects_the_schedule():
     assert start == location1
     assert end == location2
     assert time == (one_hour * 2)
+
+    [_,(address, subject, message)] = gateway.sent
+
+    assert subject == "Your delivery will arrive soon"
+    assert message == f"Your delivery to {location3} is next, estimated time of arrival is in 325 minutes. Be ready!"
