@@ -22,6 +22,37 @@ class Delivery:
     arrived: bool
     on_time: bool
 
+@dataclass
+class ScheduleItem:
+
+    delivery: Delivery
+    prev: Optional['ScheduleItem'] = None
+    next: Optional['ScheduleItem'] = None
+
+    def find(self, id):
+        """
+        Walk the list looking for a delivery
+        that has the given id.
+        """
+        if self.delivery.id == id:
+            return self
+        if self.next is not None:
+            return self.next.find(id)
+
+
+def build_schedule(deliveries: List[Delivery]) -> ScheduleItem:
+    """
+    Build a linked list of scheduled items.
+    Each item contains a delivery and has an optional
+    prev/next item.
+    """
+    prev = head = ScheduleItem(deliveries[0])
+    for delivery in deliveries[1::]:
+        curr = ScheduleItem(delivery)
+        prev.next = curr
+        curr.prev = prev
+        prev = curr
+    return head
 
 class Notifier:
 
@@ -52,38 +83,38 @@ class SmtpNotifier:
 class DeliveryController:
     def __init__(
         self,
-        delivery_schedule: List[Delivery],
+        deliveries: List[Delivery],
         notifier: Optional[Notifier] = None,
         maps: Optional[MapService] = None,
     ):
-        self.delivery_schedule = delivery_schedule
+        self.delivery_schedule = build_schedule(deliveries)
         self.map_service = maps or MapService()
         self.notifier = notifier or SmtpNotifier(EmailGateway())
 
     def update_delivery(self, delivery_event: DeliveryEvent):
-        next_delivery = None
-        for i, delivery in enumerate(self.delivery_schedule):
-            if delivery_event.id == delivery.id:
-                delivery.arrived = True
-                time_difference = (
-                    delivery_event.time_of_delivery - delivery.time_of_delivery
-                )
-                if time_difference < datetime.timedelta(minutes=10):
-                    delivery.on_time = True
-                delivery.time_of_delivery = delivery_event.time_of_delivery
-                self.notifier.request_feedback(delivery)
+        scheduled = self.delivery_schedule.find(delivery_event.id)
+        delivery = scheduled.delivery
+        delivery.arrived = True
 
-                if len(self.delivery_schedule) > i + 1:
-                    next_delivery = self.delivery_schedule[i + 1]
-                if not delivery.on_time and len(self.delivery_schedule) > 1 and i > 0:
-                    previous_delivery = self.delivery_schedule[i - 1]
-                    elapsed_time = (
-                        delivery.time_of_delivery - previous_delivery.time_of_delivery
-                    )
-                    self.map_service.update_average_speed(
-                        previous_delivery.location, delivery.location, elapsed_time
-                    )
-        if next_delivery:
+        time_difference = (
+            delivery_event.time_of_delivery - delivery.time_of_delivery
+        )
+        if time_difference < datetime.timedelta(minutes=10):
+            delivery.on_time = True
+        delivery.time_of_delivery = delivery_event.time_of_delivery
+
+        self.notifier.request_feedback(delivery)
+
+        if not delivery.on_time and scheduled.next:
+            previous_delivery = scheduled.prev.delivery
+            elapsed_time = (
+                delivery.time_of_delivery - previous_delivery.time_of_delivery
+            )
+            self.map_service.update_average_speed(
+                previous_delivery.location, delivery.location, elapsed_time
+            )
+        if scheduled.next:
+            next_delivery = scheduled.next.delivery
             next_eta = self.map_service.calculate_eta(
                 delivery_event.location, next_delivery.location
             )
